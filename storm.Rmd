@@ -2,8 +2,12 @@
 title: "Storm Data Analysis"
 author: "Ray Qiu"
 date: "October 12, 2015"
-output: html_document
-keep_md: true
+output: 
+  html_document: 
+    fig_caption: yes
+    fig_height: 6
+    fig_width: 8
+    keep_md: yes
 ---
 
 This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm data, and trying to answer the following questions:
