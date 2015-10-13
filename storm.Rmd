@@ -1,0 +1,151 @@
+---
+title: "Storm Data Analysis"
+author: "Ray Qiu"
+date: "October 12, 2015"
+output: html_document
+keep_md: true
+---
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm data, and trying to answer the following questions:
+
+* Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+
+* Across the United States, which types of events have the greatest economic consequences?
+
+***
+
+#### Data Processing
+
+Import required libraries
+```{r message = FALSE}
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+library(ggplot2)
+```
+
+Read data in R
+```{r}
+# If the RDS file does not exist, import data from original data file
+if (!file.exists("rawData.Rds")) {
+    # If the data file does not exist, download it from the web.
+    if (!file.exists("data.csv.bz2")) {
+        download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", "data.csv.bz2", "curl")
+    }
+    dat <- read.csv("data.csv.bz2", header = TRUE)
+    ## Save raw data to RDS file
+    saveRDS(dat, file = "rawData.Rds")
+} else {
+    dat <- readRDS("rawData.Rds")
+}
+```
+
+##### The following addresses the first question.
+
+Group data by EVTYPE, sum the total FATALITIES, arrange the observations in a descending order, then take the top 5.
+```{r message = FALSE}
+fatalities <- dat %>% 
+     group_by(EVTYPE) %>%
+     summarize(Total_FATAL = sum(FATALITIES)) %>%
+     arrange(desc(Total_FATAL)) %>%
+     top_n(10)
+```
+
+Group data by EVTYPE, sum the total INJURIES, arrange the observations in a descending order, then take the top 5.
+```{r message = FALSE}
+injuries <- dat %>% 
+     group_by(EVTYPE) %>%
+     summarize(Total_INJURIES = sum(INJURIES)) %>%
+     arrange(desc(Total_INJURIES)) %>%
+     top_n(10)
+```
+
+#### Results
+
+Plot the two plots
+```{r message = FALSE}
+fatalities_plot <- ggplot(fatalities, aes(x = EVTYPE, y = Total_FATAL / 1000)) + 
+    xlab("Event Types") +
+    ylab("Fatalities (thousands)") + 
+    ggtitle("Fatalities by Events") +
+    theme(plot.title = element_text(lineheight=.8, face="bold")) +
+    geom_bar(stat="identity") + 
+    theme(text = element_text(size=8), axis.text.x = element_text(angle = 45, hjust = 1))
+injuries_plot <- ggplot(injuries, aes(x = EVTYPE, y = Total_INJURIES / 1000)) + 
+    xlab("Event Types") +
+    ylab("Injuries (thousands)") + 
+    ggtitle("Injuries by Events") +
+    theme(plot.title = element_text(lineheight=.8, face="bold")) +
+    geom_bar(stat="identity") +
+    theme(text = element_text(size=8), axis.text.x = element_text(angle = 45, hjust = 1))
+grid.arrange(fatalities_plot, injuries_plot, ncol = 2)
+```
+
+From the figure, it is easy to conclude that **TORNADO**, **EXCESSIVE HEAT**, **FLASH FLOOD**, **HEAT**, and **LIGHTNING** are the top 5 events that are the most harmful with respect to fatalities; **TORNADO**, **EXCESSIVE HEAT**, **FLOOD**, **TSTM WIND**, and **LIGHTNING** are the top 5 events that are the most harmful with respect to injuries.  In summary, **TORNADO** is the most harmful with respect to population health.
+
+***
+
+###### The following addresses the second question.
+
+First, we need to prepare the data by combining both PROPDMG and PROPDMGEXP
+variables to create a new variable propDamage.
+
+```{r}
+# Create a helper function
+f <- function(x, e) {
+    if (e == "K") {
+        return(x * 10^3)
+    } else if (e == "M") {
+        return(x * 10^6)
+    } else if (e == "B") {
+        return(x * 10^9)
+    } else {
+        return(x)
+    }
+}
+# Add a new column as propDamage
+dat$propDamage <- mapply(f, dat$PROPDMG, dat$PROPDMGEXP)
+# Add a new column as cropDamage
+dat$cropDamage <- mapply(f, dat$CROPDMG, dat$CROPDMGEXP)
+```
+
+Group data by EVTYPE, sum the total propDamage, arrange the observations in a descending order, then take the top 5.
+```{r message = FALSE}
+properties <- dat %>% 
+    group_by(EVTYPE) %>%
+    summarize(Total_propDamage = sum(propDamage)) %>%
+    arrange(desc(Total_propDamage)) %>%
+    top_n(10)
+```
+
+Group data by EVTYPE, sum the total cropDamage, arrange the observations in a descending order, then take the top 5.
+```{r message = FALSE}
+crops <- dat %>% 
+    group_by(EVTYPE) %>%
+    summarize(Total_cropDamage = sum(cropDamage)) %>%
+    arrange(desc(Total_cropDamage)) %>%
+    top_n(10)
+```
+
+Put the numbers together to see the bigger picture
+```{r message = FALSE}
+total_damages <- full_join(properties, crops, by = "EVTYPE") %>%
+    mutate(Total_propDaamge = replace(Total_propDamage, is.na(Total_propDamage), 0)) %>%
+    mutate(Total_cropDamage = replace(Total_cropDamage, is.na(Total_cropDamage), 0)) %>%
+    gather("DamageTypes", "Numbers", 2:3) # Convert to long format for plot
+```
+
+#### Results
+
+Plot the combined numbers for events
+```{r message = FALSE}
+ggplot(total_damages, aes(x = EVTYPE, y = Numbers / 10^9, fill = DamageTypes)) + 
+    xlab("Event Types") +
+    ylab("Total Damages (billions)") + 
+    ggtitle("Economical Impacts by Events") +
+    theme(plot.title = element_text(lineheight=.8, face="bold")) +
+    geom_bar(stat="identity") +
+    theme(text = element_text(size=8), axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Based on the figure, we can conclude that: **FLOOD**, **HURRICANE/TYPHOON**, and **TORNADO** are the top 3 events that have the greatest economic consequences.
